@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "EventStatsLogger.h"
 #include <fstream>
+#include <chrono>
 
 
 BAKKESMOD_PLUGIN(EventStatsLogger, "EventStatsLogger", plugin_version, PLUGINTYPE_FREEPLAY)
@@ -13,16 +14,10 @@ void EventStatsLogger::onLoad()
 	cvarManager->log("Plugin Loaded!");
 	std::filesystem::path bakkesModPath = gameWrapper->GetBakkesModPath();
 
-
-	int gameModeId = static_cast<int>(GameMode::Type::Training);
-	std::string name = GameMode::GetGameModeName(gameModeId);
-	GameMode::Type mode = static_cast<GameMode::Type>(gameModeId);
-	LOG("Test {} {}", gameModeId, name);
-
-	//cvarManager->registerNotifier("save_test", [this](std::vector<std::string> args) {
-	//	std::string data = "Sample data to save.";
-	//	SaveDataToFile("my_saved_data.txt", data);
-	//}, "Save sample data to a file", 0);
+	// Update all ranks (with delay)
+	gameWrapper->SetTimeout([this](GameWrapper* gw) {
+		updateAllRankFiles();
+		}, 5.0f);
 
 	//LOG("Plugin loaded!");
 	// !! Enable debug logging by setting DEBUG_LOG = true in logging.h !!
@@ -56,48 +51,28 @@ void EventStatsLogger::onLoad()
 	//gameWrapper->RegisterDrawable(bind(&TEMPLATE::Render, this, std::placeholders::_1));
 
 	gameWrapper->HookEvent("Function TAGame.Team_TA.PostBeginPlay", [this](std::string eventName) {
-		ServerWrapper sw = gameWrapper->GetCurrentGameState();
-		if (!sw) return;
-		GameSettingPlaylistWrapper playlist = sw.GetPlaylist();
-		if (!playlist) return;
-		int playlistID = playlist.GetPlaylistId();
-		SaveDataToFile("event\\PostBeginPlay.txt", std::to_string(playlistID));
+		saveEventToFile("PostBeginPlay");
 		});
 
 	gameWrapper->HookEvent("Function GameEvent_Soccar_TA.Active.StartRound", [this](std::string eventName) {
-		ServerWrapper sw = gameWrapper->GetCurrentGameState();
-		if (!sw) return;
-		GameSettingPlaylistWrapper playlist = sw.GetPlaylist();
-		if (!playlist) return;
-		int playlistID = playlist.GetPlaylistId();
-		SaveDataToFile("event\\Active.StartRound.txt", std::to_string(playlistID));
+		saveEventToFile("Active.StartRound");
 	});
 
 	gameWrapper->HookEvent("Function GameEvent_Soccar_TA.Countdown.BeginState", [this](std::string eventName) {
-		ServerWrapper sw = gameWrapper->GetCurrentGameState();
-		if (!sw) return;
-		GameSettingPlaylistWrapper playlist = sw.GetPlaylist();
-		if (!playlist) return;
-		int playlistID = playlist.GetPlaylistId();
-		SaveDataToFile("event\\Countdown.BeginState.txt", std::to_string(playlistID));
+		saveEventToFile("Countdown.BeginState");
 		});
 
 	gameWrapper->HookEvent("Function TAGame.GameEvent_Soccar_TA.EventMatchEnded", [this](std::string eventName) {
-		ServerWrapper sw = gameWrapper->GetCurrentGameState();
-		if (!sw) return;
-		GameSettingPlaylistWrapper playlist = sw.GetPlaylist();
-		if (!playlist) return;
-		int playlistID = playlist.GetPlaylistId();
-		SaveDataToFile("event\\EventMatchEnded.txt", std::to_string(playlistID));
+		MMRWrapper mmrWrapper = gameWrapper->GetMMRWrapper();
+		int gameModeId = mmrWrapper.GetCurrentPlaylist();
+		//cvarManager->log("gameModeId: " + std::to_string(gameModeId));
+		GameMode::Type gameMode = static_cast<GameMode::Type>(gameModeId);
+		saveRankToFile(gameMode);
+		saveEventToFile("EventMatchEnded");
 		});
 
 	gameWrapper->HookEvent("Function TAGame.GameEvent_Soccar_TA.Destroyed", [this](std::string eventName) {
-		ServerWrapper sw = gameWrapper->GetCurrentGameState();
-		if (!sw) return;
-		GameSettingPlaylistWrapper playlist = sw.GetPlaylist();
-		if (!playlist) return;
-		int playlistID = playlist.GetPlaylistId();
-		SaveDataToFile("event\\Destroyed.txt", std::to_string(playlistID));
+		saveEventToFile("Destroyed");
 		});
 
 	//gameWrapper->HookEvent("Function TAGame.Ball_TA.Explode", [this](std::string eventName) {
@@ -108,7 +83,7 @@ void EventStatsLogger::onLoad()
 }
 
 
-void EventStatsLogger::SaveDataToFile(const std::string& filename, const std::string& data) {
+void EventStatsLogger::saveDataToFile(const std::string& filename, const std::string& data) {
 	_globalCvarManager = cvarManager;
 
 	// Working folder path
@@ -134,4 +109,43 @@ void EventStatsLogger::SaveDataToFile(const std::string& filename, const std::st
 	else {
 		cvarManager->log("Failed to open file for writing: " + filePath.string());
 	}
+}
+
+void EventStatsLogger::saveEventToFile(const std::string& eventName)
+{
+	ServerWrapper sw = gameWrapper->GetCurrentGameState();
+	if (!sw) return;
+	GameSettingPlaylistWrapper playlist = sw.GetPlaylist();
+	if (!playlist) return;
+	int playlistID = playlist.GetPlaylistId();
+	std::string playlistName = GameMode::GetGameModeName(playlistID);
+	saveDataToFile("event\\"+eventName+".txt", playlistName +"\n" + std::to_string(playlistID));
+}
+
+void EventStatsLogger::saveRankToFile(GameMode::Type gameMode)
+{
+	MMRWrapper mmrWrapper = gameWrapper->GetMMRWrapper();
+	int gameModeId = static_cast<int>(gameMode);
+	float mmrValue = mmrWrapper.GetPlayerMMR(gameWrapper->GetUniqueID(), gameModeId);
+	SkillRank skillRank = mmrWrapper.GetPlayerRank(gameWrapper->GetUniqueID(), gameModeId);
+
+	std::string gameModeName = GameMode::GetGameModeName(gameModeId);
+	std::string mmr = std::to_string(mmrValue);
+	std::string tier = std::to_string(skillRank.Tier);
+	std::string division = std::to_string(skillRank.Division);
+	std::string matchesPlayed = std::to_string(skillRank.MatchesPlayed);
+
+	std::string data = gameModeName + "\n" + mmr + "\n" + tier + "\n" + division + "\n" + matchesPlayed;
+	saveDataToFile("rank\\" + GameMode::GetEnumName(gameMode) + ".txt", data);
+}
+
+void EventStatsLogger::updateAllRankFiles()
+{
+	saveRankToFile(GameMode::Type::Casual);
+	saveRankToFile(GameMode::Type::DuelRanked);
+	saveRankToFile(GameMode::Type::DoublesRanked);
+	saveRankToFile(GameMode::Type::StandardRanked);
+	saveRankToFile(GameMode::Type::RumbleRanked);
+	saveRankToFile(GameMode::Type::HoopsRanked);
+	saveRankToFile(GameMode::Type::SnowDayRanked);
 }

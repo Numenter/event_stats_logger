@@ -22,7 +22,10 @@ class EventStatsLogger: public BakkesMod::Plugin::BakkesModPlugin
 	void onLoad() override;
 	//void onUnload() override; // Uncomment and implement if you need a unload method
 
-	void SaveDataToFile(const std::string& filename, const std::string& data);
+	void saveDataToFile(const std::string& filename, const std::string& data);
+	void saveEventToFile(const std::string& eventName);
+	void saveRankToFile(GameMode::Type gameMode);
+	void updateAllRankFiles();
 
 public:
 	//void RenderSettings() override; // Uncomment if you wanna render your own tab in the settings menu

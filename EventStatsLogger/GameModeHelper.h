@@ -5,7 +5,6 @@
 class GameMode
 {
 public:
-    // Define the enum inside the class
     enum class Type {
         Intermission = -2,
         Casual = 0,
@@ -55,7 +54,6 @@ public:
         ConfidentialThirdWheelTest = 55
     };
 
-    // Static function to get name from ID
     static std::string GetGameModeName(int gameModeId)
     {
         switch (static_cast<Type>(gameModeId))
@@ -108,5 +106,17 @@ public:
         case Type::ConfidentialThirdWheelTest: return "confidential_thirdwheel_test";
         default: return "Unknown";
         }
+    }
+
+    static std::string GetEnumName(Type gameMode)
+    {
+        int gameModeId = static_cast<int>(gameMode);
+        std::string gameModeName = GetGameModeName(gameModeId);
+
+        std::string result = gameModeName;
+        result.erase(std::remove(result.begin(), result.end(), ' '), result.end());
+        result.erase(std::remove(result.begin(), result.end(), '('), result.end());
+        result.erase(std::remove(result.begin(), result.end(), ')'), result.end());
+        return result;
     }
 };
