@@ -3,7 +3,7 @@
 #include <fstream>
 
 
-BAKKESMOD_PLUGIN(EventStatsLogger, "write a plugin description here", plugin_version, PLUGINTYPE_FREEPLAY)
+BAKKESMOD_PLUGIN(EventStatsLogger, "EventStatsLogger", plugin_version, PLUGINTYPE_FREEPLAY)
 
 std::shared_ptr<CVarManagerWrapper> _globalCvarManager;
 
@@ -12,12 +12,17 @@ void EventStatsLogger::onLoad()
 	_globalCvarManager = cvarManager;
 	cvarManager->log("Plugin Loaded!");
 	std::filesystem::path bakkesModPath = gameWrapper->GetBakkesModPath();
-	// Register a console command to trigger saving
-	cvarManager->registerNotifier("save_test", [this](std::vector<std::string> args) {
-		// Example data to save, you can replace this with your actual data
-		std::string data = "Sample data to save.";
-		SaveDataToFile("my_saved_data.txt", data);
-	}, "Save sample data to a file", 0);
+
+
+	int gameModeId = static_cast<int>(GameMode::Type::Training);
+	std::string name = GameMode::GetGameModeName(gameModeId);
+	GameMode::Type mode = static_cast<GameMode::Type>(gameModeId);
+	LOG("Test {} {}", gameModeId, name);
+
+	//cvarManager->registerNotifier("save_test", [this](std::vector<std::string> args) {
+	//	std::string data = "Sample data to save.";
+	//	SaveDataToFile("my_saved_data.txt", data);
+	//}, "Save sample data to a file", 0);
 
 	//LOG("Plugin loaded!");
 	// !! Enable debug logging by setting DEBUG_LOG = true in logging.h !!
@@ -50,6 +55,50 @@ void EventStatsLogger::onLoad()
 	//gameWrapper->HookEventWithCallerPost<ActorWrapper>("FUNCTIONNAME", std::bind(&EventStatsLogger::FUNCTION, this, _1, _2, _3));
 	//gameWrapper->RegisterDrawable(bind(&TEMPLATE::Render, this, std::placeholders::_1));
 
+	gameWrapper->HookEvent("Function TAGame.Team_TA.PostBeginPlay", [this](std::string eventName) {
+		ServerWrapper sw = gameWrapper->GetCurrentGameState();
+		if (!sw) return;
+		GameSettingPlaylistWrapper playlist = sw.GetPlaylist();
+		if (!playlist) return;
+		int playlistID = playlist.GetPlaylistId();
+		SaveDataToFile("event\\PostBeginPlay.txt", std::to_string(playlistID));
+		});
+
+	gameWrapper->HookEvent("Function GameEvent_Soccar_TA.Active.StartRound", [this](std::string eventName) {
+		ServerWrapper sw = gameWrapper->GetCurrentGameState();
+		if (!sw) return;
+		GameSettingPlaylistWrapper playlist = sw.GetPlaylist();
+		if (!playlist) return;
+		int playlistID = playlist.GetPlaylistId();
+		SaveDataToFile("event\\Active.StartRound.txt", std::to_string(playlistID));
+	});
+
+	gameWrapper->HookEvent("Function GameEvent_Soccar_TA.Countdown.BeginState", [this](std::string eventName) {
+		ServerWrapper sw = gameWrapper->GetCurrentGameState();
+		if (!sw) return;
+		GameSettingPlaylistWrapper playlist = sw.GetPlaylist();
+		if (!playlist) return;
+		int playlistID = playlist.GetPlaylistId();
+		SaveDataToFile("event\\Countdown.BeginState.txt", std::to_string(playlistID));
+		});
+
+	gameWrapper->HookEvent("Function TAGame.GameEvent_Soccar_TA.EventMatchEnded", [this](std::string eventName) {
+		ServerWrapper sw = gameWrapper->GetCurrentGameState();
+		if (!sw) return;
+		GameSettingPlaylistWrapper playlist = sw.GetPlaylist();
+		if (!playlist) return;
+		int playlistID = playlist.GetPlaylistId();
+		SaveDataToFile("event\\EventMatchEnded.txt", std::to_string(playlistID));
+		});
+
+	gameWrapper->HookEvent("Function TAGame.GameEvent_Soccar_TA.Destroyed", [this](std::string eventName) {
+		ServerWrapper sw = gameWrapper->GetCurrentGameState();
+		if (!sw) return;
+		GameSettingPlaylistWrapper playlist = sw.GetPlaylist();
+		if (!playlist) return;
+		int playlistID = playlist.GetPlaylistId();
+		SaveDataToFile("event\\Destroyed.txt", std::to_string(playlistID));
+		});
 
 	//gameWrapper->HookEvent("Function TAGame.Ball_TA.Explode", [this](std::string eventName) {
 	//	LOG("Your hook got called and the ball went POOF");
@@ -65,22 +114,22 @@ void EventStatsLogger::SaveDataToFile(const std::string& filename, const std::st
 	// Working folder path
 	std::filesystem::path bakkesModPath = gameWrapper->GetBakkesModPath();
 	std::filesystem::path pluginFolderPath = bakkesModPath / "data" / "EventStatsLogger";
+	std::filesystem::path filePath = pluginFolderPath / filename;
+	std::filesystem::path dirPath = filePath.parent_path();
 
 	// Create directory if it doesn't exist
 	std::error_code ec;
-	std::filesystem::create_directories(pluginFolderPath, ec);
+	std::filesystem::create_directories(dirPath, ec);
 	if (ec) {
-		cvarManager->log("Failed to create directory: " + pluginFolderPath.string());
+		cvarManager->log("Failed to create directory: " + dirPath.string());
 		return;
 	}
 
 	// Overwrite or create the file
-	std::filesystem::path filePath = pluginFolderPath / filename;
 	std::ofstream outFile(filePath);
 	if (outFile.is_open()) {
 		outFile << data;
 		outFile.close();
-		cvarManager->log("Data saved to: " + filePath.string());
 	}
 	else {
 		cvarManager->log("Failed to open file for writing: " + filePath.string());
