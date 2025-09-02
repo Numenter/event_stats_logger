@@ -17,7 +17,7 @@ void EventStatsLogger::onLoad()
 	// Update all ranks (with delay)
 	gameWrapper->SetTimeout([this](GameWrapper* gw) {
 		updateAllRankFiles();
-		}, 5.0f);
+		}, 10.0f);
 
 	//LOG("Plugin loaded!");
 	// !! Enable debug logging by setting DEBUG_LOG = true in logging.h !!
@@ -63,11 +63,14 @@ void EventStatsLogger::onLoad()
 		});
 
 	gameWrapper->HookEvent("Function TAGame.GameEvent_Soccar_TA.EventMatchEnded", [this](std::string eventName) {
-		MMRWrapper mmrWrapper = gameWrapper->GetMMRWrapper();
-		int gameModeId = mmrWrapper.GetCurrentPlaylist();
-		//cvarManager->log("gameModeId: " + std::to_string(gameModeId));
-		GameMode::Type gameMode = static_cast<GameMode::Type>(gameModeId);
-		saveRankToFile(gameMode);
+		gameWrapper->SetTimeout([this](GameWrapper* gw) {
+			MMRWrapper mmrWrapper = gameWrapper->GetMMRWrapper();
+			int gameModeId = mmrWrapper.GetCurrentPlaylist();
+			//cvarManager->log("gameModeId: " + std::to_string(gameModeId));
+			GameMode::Type gameMode = static_cast<GameMode::Type>(gameModeId);
+			saveRankToFile(gameMode);
+			saveEventToFile("EventMatchEndedUpdatedRank");
+			}, 1.0f);
 		saveEventToFile("EventMatchEnded");
 		});
 
@@ -117,9 +120,10 @@ void EventStatsLogger::saveEventToFile(const std::string& eventName)
 	if (!sw) return;
 	GameSettingPlaylistWrapper playlist = sw.GetPlaylist();
 	if (!playlist) return;
-	int playlistID = playlist.GetPlaylistId();
-	std::string playlistName = GameMode::GetGameModeName(playlistID);
-	saveDataToFile("event\\"+eventName+".txt", playlistName +"\n" + std::to_string(playlistID));
+	int gameModeId = playlist.GetPlaylistId();
+	GameMode::Type gameMode = static_cast<GameMode::Type>(gameModeId);
+	std::string gameModeName = GameMode::GetEnumName(gameMode);
+	saveDataToFile("event\\"+eventName+".txt", gameModeName +"\n" + std::to_string(gameModeId));
 }
 
 void EventStatsLogger::saveRankToFile(GameMode::Type gameMode)
@@ -129,14 +133,15 @@ void EventStatsLogger::saveRankToFile(GameMode::Type gameMode)
 	float mmrValue = mmrWrapper.GetPlayerMMR(gameWrapper->GetUniqueID(), gameModeId);
 	SkillRank skillRank = mmrWrapper.GetPlayerRank(gameWrapper->GetUniqueID(), gameModeId);
 
-	std::string gameModeName = GameMode::GetGameModeName(gameModeId);
+	//std::string gameModeName = GameMode::GetGameModeName(gameModeId);
+	std::string gameModeName = GameMode::GetEnumName(gameMode);
 	std::string mmr = std::to_string(mmrValue);
 	std::string tier = std::to_string(skillRank.Tier);
 	std::string division = std::to_string(skillRank.Division);
 	std::string matchesPlayed = std::to_string(skillRank.MatchesPlayed);
 
 	std::string data = gameModeName + "\n" + mmr + "\n" + tier + "\n" + division + "\n" + matchesPlayed;
-	saveDataToFile("rank\\" + GameMode::GetEnumName(gameMode) + ".txt", data);
+	saveDataToFile("rank\\" + gameModeName + ".txt", data);
 }
 
 void EventStatsLogger::updateAllRankFiles()
